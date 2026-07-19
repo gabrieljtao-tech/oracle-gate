@@ -1,0 +1,1 @@
+one-shot direct Postgres readiness verification trigger — 2026-07-19
