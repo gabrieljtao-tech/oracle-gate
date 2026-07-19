@@ -30,3 +30,4 @@ jobs:
           if data.get('ok') is not True or data.get('direct_postgres') is not True:
               raise SystemExit('direct postgres readiness failed')
           PY
+      # one-shot branch probe; remove after collection
