@@ -1,6 +1,8 @@
 name: Model Mesh Status Probe
 
 on:
+  push:
+    branches: [orca/mm-status-probe-20260719]
   pull_request:
     branches: [main]
   workflow_dispatch:
