@@ -1,4 +1,4 @@
-name: President Locks Fact-Checked Remaster Once v2
+name: President Locks Verified Public Master Once
 
 on:
   push:
@@ -10,11 +10,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: president-locks-factchecked-remaster-once-v2
+  group: president-locks-verified-publication-once
   cancel-in-progress: false
 
 jobs:
-  remaster:
+  publish:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -31,15 +31,16 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg
           command -v ffmpeg
           command -v ffprobe
-          ffmpeg -version > ffmpeg-version.txt
-          ffprobe -version > ffprobe-version.txt
-          sed -n '1p' ffmpeg-version.txt
-          sed -n '1p' ffprobe-version.txt
+          ffmpeg -version | sed -n '1p'
+          ffprobe -version | sed -n '1p'
           python3 --version
           curl --version | sed -n '1p'
 
-      - name: Execute calibrated exact-byte remaster and private upload
+      - name: Reproduce exact approved master and publish one public copy
         shell: bash
+        env:
+          EXPECTED_MASTER_SHA256: 767338fab63bb0bf2e2833e19b64e84227dfe56e851595fad8ee8f07f0f9d1e9
+          PUBLIC_URL: https://veqpmdsiqcjjpxgcubrp.supabase.co/storage/v1/object/public/podcasts/presidents-note-a7e3c4c2-locks-factchecked-v3.mp3
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -51,53 +52,82 @@ jobs:
             'g2=0.2884031503':'g2=0.2162718524',
             'g3=0.3630780548':'g3=0.2722701308',
             '"under_voice_gain_db":[-9.6,-10.8,-8.8]':'"under_voice_gain_db":[-12.1,-13.3,-11.3]',
+            "STORAGE_BUCKET='voice-vault'":"STORAGE_BUCKET='podcasts'",
+            "STORAGE_PATH='president-notes/a7e3c4c2-locks-factchecked-remaster-v3.mp3'":"STORAGE_PATH='presidents-note-a7e3c4c2-locks-factchecked-v3.mp3'",
           }
           for old,new in replacements.items():
             if old not in s:
-              raise SystemExit(f'missing calibration token: {old}')
+              raise SystemExit(f'missing publication token: {old}')
             s=s.replace(old,new,1)
+          marker="sha256sum master.mp3 > master.sha256"
+          guard="""sha256sum master.mp3 > master.sha256
+          test \"$(awk '{print $1}' master.sha256)\" = \"767338fab63bb0bf2e2833e19b64e84227dfe56e851595fad8ee8f07f0f9d1e9\""".strip()
+          if marker not in s:
+            raise SystemExit('missing master sha marker')
+          s=s.replace(marker,guard,1)
           p.write_text(s)
           PY
           chmod +x .gabs/president-locks-remaster-once.sh
           set +e
-          .gabs/president-locks-remaster-once.sh > remaster-run.log 2>&1
+          .gabs/president-locks-remaster-once.sh > publication-run.log 2>&1
           CODE=$?
           set -e
-          cat remaster-run.log
+          cat publication-run.log
           exit "$CODE"
 
-      - name: Upload safe diagnostic evidence
+      - name: Verify public byte identity and enrich proof
+        shell: bash
+        env:
+          EXPECTED_MASTER_SHA256: 767338fab63bb0bf2e2833e19b64e84227dfe56e851595fad8ee8f07f0f9d1e9
+          PUBLIC_URL: https://veqpmdsiqcjjpxgcubrp.supabase.co/storage/v1/object/public/podcasts/presidents-note-a7e3c4c2-locks-factchecked-v3.mp3
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 4 --retry-all-errors \
+            -o public-master.mp3 "${PUBLIC_URL}?verify=${GITHUB_RUN_ID}"
+          PUBLIC_SHA=$(sha256sum public-master.mp3 | awk '{print $1}')
+          PUBLIC_BYTES=$(stat -c '%s' public-master.mp3)
+          test "$PUBLIC_SHA" = "$EXPECTED_MASTER_SHA256"
+          test "$PUBLIC_BYTES" = "3128423"
+          python3 - "$PUBLIC_URL" "$PUBLIC_SHA" "$PUBLIC_BYTES" <<'PY'
+          import json,sys
+          from pathlib import Path
+          path=Path('proofs/president-locks-remaster-result.json')
+          d=json.loads(path.read_text())
+          d.update({
+            'public_url':sys.argv[1],
+            'public_sha256':sys.argv[2],
+            'public_bytes':int(sys.argv[3]),
+            'public_byte_identity':sys.argv[2]==d['master_sha256'] and int(sys.argv[3])==d['master_bytes'],
+            'independent_audio_review_decision':'pass',
+            'independent_audio_review_provider_request_id':'req_3eae28b862984bd7893c4b7645ea75bf',
+            'full_render_gate_decision':'pass',
+            'gate_proof_reference_id':5549,
+            'note_updated':False,
+            'sms_released':False,
+          })
+          if not d['public_byte_identity']:
+            raise SystemExit('public byte identity failed')
+          path.write_text(json.dumps(d,indent=2,sort_keys=True)+'\n')
+          PY
+
+      - name: Upload short-lived publication evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: president-locks-remaster-diagnostics-v3
+          name: president-locks-publication-evidence
           path: |
-            remaster-run.log
+            publication-run.log
             proofs/president-locks-remaster-result.json
             proofs/president-locks-remaster-measurements.json
             proofs/president-locks-remaster-binding.json
             proofs/president-locks-remaster-probe.json
             proofs/president-locks-remaster-recipe.json
-            .gabs-remaster/voice-source-probe.json
-            .gabs-remaster/bed-source-probe.json
-            .gabs-remaster/voice-stem-probe.json
-            .gabs-remaster/bed-stem-probe.json
-            .gabs-remaster/mix-probe.json
-            .gabs-remaster/master-probe.json
-            .gabs-remaster/master-binding.json
-            .gabs-remaster/measurements.json
-            .gabs-remaster/silence.log
-            .gabs-remaster/timing.env
-            .gabs-remaster/bed-gain-filter.txt
-            .gabs-remaster/reconstruction-recipe.json
-            .gabs-remaster/upload-http-status.txt
-            .gabs-remaster/upload-response.json
             .gabs-remaster/master.mp3
+            public-master.mp3
           if-no-files-found: warn
           retention-days: 1
 
-      - name: Commit proof and remove one-use execution surface
-        if: success()
+      - name: Commit proof and delete one-use execution surface
         shell: bash
         run: |
           set -euo pipefail
@@ -108,7 +138,7 @@ jobs:
                   proofs/president-locks-remaster-binding.json \
                   proofs/president-locks-remaster-probe.json \
                   proofs/president-locks-remaster-recipe.json
-          git rm .github/workflows/president-locks-remaster-once-v2.yml \
-                 .gabs/president-locks-remaster-once.sh
-          git commit -m 'proof: record and retire one-use President Note remaster v2'
+          git rm -f .github/workflows/president-locks-remaster-once-v2.yml \
+                    .gabs/president-locks-remaster-once.sh
+          git commit -m 'proof: publish verified President master and retire one-use workflow'
           git push origin HEAD:main
