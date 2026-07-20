@@ -38,10 +38,26 @@ jobs:
           python3 --version
           curl --version | sed -n '1p'
 
-      - name: Execute exact-byte remaster and private upload
+      - name: Execute calibrated exact-byte remaster and private upload
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.gabs/president-locks-remaster-once.sh')
+          s=p.read_text()
+          replacements={
+            'g1=0.3311311215':'g1=0.2483133105',
+            'g2=0.2884031503':'g2=0.2162718524',
+            'g3=0.3630780548':'g3=0.2722701308',
+            '"under_voice_gain_db":[-9.6,-10.8,-8.8]':'"under_voice_gain_db":[-12.1,-13.3,-11.3]',
+          }
+          for old,new in replacements.items():
+            if old not in s:
+              raise SystemExit(f'missing calibration token: {old}')
+            s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
           chmod +x .gabs/president-locks-remaster-once.sh
           set +e
           .gabs/president-locks-remaster-once.sh > remaster-run.log 2>&1
@@ -54,7 +70,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: president-locks-remaster-diagnostics-v2
+          name: president-locks-remaster-diagnostics-v3
           path: |
             remaster-run.log
             proofs/president-locks-remaster-result.json
