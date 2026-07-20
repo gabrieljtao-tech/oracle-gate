@@ -1,0 +1,75 @@
+name: President Locks Fact-Checked Remaster Once v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/president-locks-remaster-once-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: president-locks-factchecked-remaster-once-v2
+  cancel-in-progress: false
+
+jobs:
+  remaster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install and verify FFmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg
+          command -v ffmpeg
+          command -v ffprobe
+          ffmpeg -version > ffmpeg-version.txt
+          ffprobe -version > ffprobe-version.txt
+          sed -n '1p' ffmpeg-version.txt
+          sed -n '1p' ffprobe-version.txt
+          python3 --version
+          curl --version | sed -n '1p'
+
+      - name: Execute exact-byte remaster and private upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x .gabs/president-locks-remaster-once.sh
+          .gabs/president-locks-remaster-once.sh
+
+      - name: Upload short-lived evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: president-locks-remaster-evidence-v2
+          path: |
+            proofs/president-locks-remaster-result.json
+            proofs/president-locks-remaster-measurements.json
+            proofs/president-locks-remaster-binding.json
+            proofs/president-locks-remaster-probe.json
+            proofs/president-locks-remaster-recipe.json
+            .gabs-remaster/master.mp3
+          retention-days: 1
+
+      - name: Commit proof and remove one-use execution surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'gabs-autonomous-loop'
+          git config user.email 'gabs-autonomous-loop@users.noreply.github.com'
+          git add proofs/president-locks-remaster-result.json \
+                  proofs/president-locks-remaster-measurements.json \
+                  proofs/president-locks-remaster-binding.json \
+                  proofs/president-locks-remaster-probe.json \
+                  proofs/president-locks-remaster-recipe.json
+          git rm .github/workflows/president-locks-remaster-once-v2.yml \
+                 .gabs/president-locks-remaster-once.sh
+          git commit -m 'proof: record and retire one-use President Note remaster v2'
+          git push origin HEAD:main
