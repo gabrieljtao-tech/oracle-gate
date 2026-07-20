@@ -43,22 +43,45 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x .gabs/president-locks-remaster-once.sh
-          .gabs/president-locks-remaster-once.sh
+          set +e
+          .gabs/president-locks-remaster-once.sh > remaster-run.log 2>&1
+          CODE=$?
+          set -e
+          cat remaster-run.log
+          exit "$CODE"
 
-      - name: Upload short-lived evidence artifact
+      - name: Upload safe diagnostic evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: president-locks-remaster-evidence-v2
+          name: president-locks-remaster-diagnostics-v2
           path: |
+            remaster-run.log
             proofs/president-locks-remaster-result.json
             proofs/president-locks-remaster-measurements.json
             proofs/president-locks-remaster-binding.json
             proofs/president-locks-remaster-probe.json
             proofs/president-locks-remaster-recipe.json
+            .gabs-remaster/voice-source-probe.json
+            .gabs-remaster/bed-source-probe.json
+            .gabs-remaster/voice-stem-probe.json
+            .gabs-remaster/bed-stem-probe.json
+            .gabs-remaster/mix-probe.json
+            .gabs-remaster/master-probe.json
+            .gabs-remaster/master-binding.json
+            .gabs-remaster/measurements.json
+            .gabs-remaster/silence.log
+            .gabs-remaster/timing.env
+            .gabs-remaster/bed-gain-filter.txt
+            .gabs-remaster/reconstruction-recipe.json
+            .gabs-remaster/upload-http-status.txt
+            .gabs-remaster/upload-response.json
             .gabs-remaster/master.mp3
+          if-no-files-found: warn
           retention-days: 1
 
       - name: Commit proof and remove one-use execution surface
+        if: success()
         shell: bash
         run: |
           set -euo pipefail
